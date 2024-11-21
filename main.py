@@ -5,7 +5,7 @@ import scipy.fftpack
 import os, keyboard, time
 from PIL import Image, ImageTk
 import tkinter as tk
-from tkinter import messagebox, font
+from tkinter import messagebox, font, StringVar
 import threading
 from modules.CustomCheckbox import CustomCheckbox
 
@@ -70,6 +70,7 @@ bass_threshold = DEFAULT_BASS_THRESHOLD
 bass_reduction = DEFAULT_BASS_REDUCTION
 windowSamples = np.zeros(WINDOW_SIZE)
 closestNote = ''
+selected_device = None
 
 # funciton to find closest note for given pitch
 CONCERT_PITCH = 440
@@ -136,6 +137,12 @@ def image_callback(indata, frames, time, status):
                 
     else:
         print("no input")
+
+# clear from widgets
+def clear_current_screen():
+    for widget in root.winfo_children():
+        widget.destroy()
+
 
 # stop the program button
 running = True
@@ -237,6 +244,24 @@ def start_apploop():
     audio_thread = threading.Thread(target=start_audio_stream)
     audio_thread.start()
 
+def list_audio_devices():
+    """List all available audio devices and return input devices."""
+    devices = sd.query_devices()
+    input_devices = [f"{i}: {device['name']}" for i, device in enumerate(devices) if device['max_input_channels'] > 0]
+    return input_devices
+
+def set_audio_device(selection):
+    """Set the selected audio device."""
+    global selected_device
+    try:
+        device_index = int(selection.split(":")[0])  # Extract device index
+        sd.check_input_settings(device=device_index)  # Validate device
+        selected_device = device_index
+        print(f"Selected device: {device_index}")
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to set audio device: {str(e)}")
+        selected_device = None
+
 def start_tunerloop():
     pass
 
@@ -276,10 +301,17 @@ bass_reduction_entry = tk.Entry(root)
 start_button_image = ImageTk.PhotoImage(Image.open("images/bStart.png"))
 start_button = tk.Button(root, image=start_button_image, bg='#333333', fg='#FFFFFF', command=start_apploop)
 
-tuner_button_image = ImageTk.PhotoImage(Image.open("images/bTuner.png"))
+tuner_button_image = ImageTk.PhotoImage(Image.open("images/bDevice.png"))
 tuner_button = tk.Button(root, image=tuner_button_image, bg='#333333', fg='#FFFFFF')
 
-# TODO device select button
+devices = list_audio_devices()
+if not devices:
+    messagebox.showerror("Error", "No audio input devices found!")
+    root.destroy()
+    
+devices_var = StringVar(root)
+devices_var.set("Select Device")
+device_menu = tk.OptionMenu(root, devices_var, *devices, command=set_audio_device)
 
 welcome_label.grid(row=1, column=0, columnspan=3)
 num_of_samples_label.grid(row=2, column=1, padx=20)
@@ -292,10 +324,14 @@ bass_threshold_entry.grid(row=4, column=2, padx=20)
 bass_reduction_label.grid(row=5, column=1, padx=20,)
 bass_reduction_entry.grid(row=5, column=2, padx=20)
 start_button.grid(row=6, column=2, pady=20)
-tuner_button.grid(row=6, column=1)
+device_menu.grid(row=6, column=1)
 
 
 def start_audio_stream():
+    if selected_device is None:
+        messagebox.showerror("Error", f"Failed to set audio device: {str(e)}")
+        selected_device = None
+    
     try:
         with sd.InputStream(channels=1, callback=image_callback, blocksize=WINDOW_STEP, samplerate=SAMPLE_FREQ):
             while running:
